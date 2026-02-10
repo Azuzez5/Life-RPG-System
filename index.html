@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Life RPG System - Auto Mode</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <style>
+    body { font-family: Arial, sans-serif; background:#0f172a; color:#e5e7eb; margin:0; padding:15px; }
+    .container { display:grid; grid-template-columns:1fr; gap:15px; }
+    @media (min-width:900px){ .container{grid-template-columns:1fr 1fr;} }
+    .card { background:#111827; border-radius:12px; padding:15px; box-shadow:0 0 12px rgba(0,0,0,.4); }
+    .bar { background:#1f2933; border-radius:8px; overflow:hidden; height:16px; margin:6px 0 10px; }
+    .bar-inner { height:100%; background:linear-gradient(90deg,#22c55e,#4ade80); width:0%; }
+    .boss-bar-inner { background:linear-gradient(90deg,#ef4444,#f87171); }
+    button { background:#2563eb; border:none; color:white; padding:10px; border-radius:8px; width:100%; margin-top:6px; cursor:pointer; }
+    button:hover { background:#1d4ed8; }
+    .log { max-height:200px; overflow-y:auto; font-size:13px; background:#020617; padding:8px; border-radius:6px; }
+    .quest { background:#020617; padding:10px; border-radius:8px; margin-top:6px; }
+  </style>
+</head>
+<body>
+
+<h1>🎮 Life RPG System </h1>
+<p>Làm chủ cuộc sống của bạn trong game</p>
+
+<div class="container">
+    <!-- SHOP -->
+  <div class="card">
+  <h2>🛒 Shop Power-Up</h2>
+
+  <button onclick="buyPowerup('doubleExp')">
+    ⚡ Double EXP (2 quest) — 50 Gold
+  </button>
+
+  <button onclick="buyPowerup('strongAttack')">
+    ⚔️ Strong Attack (+20 dmg) — 75 Gold
+  </button>
+
+  <button onclick="buyPowerup('bonusGold')">
+    💰 Bonus Gold (+50% gold 3 lần) — 60 Gold
+  </button>
+
+  <div style="margin-top:8px;font-size:13px;">
+    Buff đang hoạt động:
+    <div id="buffList"></div>
+  </div>
+</div>
+  <!-- PLAYER -->
+  <div class="card">
+    <h2>👤 Nhân vật: <span id="playerNameLabel"></span></h2>
+    <div>💰 Gold: <b id="goldLabel">0</b></div>
+    <div>🔥 Streak: <b id="streakLabel">0</b> ngày</div>
+    <div style="margin-top:8px;">
+  Tên nhân vật:
+  <input id="playerNameInput" placeholder="Nhập tên nhân vật">
+  <button onclick="changeName()">✏️ Đổi tên</button>
+</div>
+
+<div style="margin-top:6px;">
+  Danh hiệu: <b id="playerTitle">None</b>
+</div>
+    <div>Level: <b id="level">1</b></div>
+    <div>EXP: <span id="exp">0</span> / <span id="nextExp">100</span></div>
+    <div class="bar"><div id="expBar" class="bar-inner"></div></div>
+
+    <h3>📊 Kỹ năng</h3>
+    <div>📚 Học tập: <b id="skillStudy">0</b></div>
+    <div>💪 Sức khỏe: <b id="skillHealth">0</b></div>
+    <div>🧠 Kỷ luật: <b id="skillDiscipline">0</b></div>
+    <div>💬 Giao tiếp: <b id="skillSocial">0</b></div>
+  </div>
+
+  <!-- DAILY QUEST -->
+  <div class="card">
+    <h2>📜 Daily Quest </h2>
+    <div id="questBox" class="quest"></div>
+    <button onclick="completeQuest()">✅ Hoàn thành Quest</button>
+    <button onclick="rerollQuest()">🔁 Đổi Quest (Random)</button>
+    <div class="card">
+  <h2>🤖 AI Coach</h2>
+  <div id="aiAdvice">AI đang theo dõi bạn...</div>
+</div>
+  </div>
+
+  <!-- BOSS -->
+  <div class="card">
+    <h2>👹 Current Boss</h2>
+    <div><b id="bossTitle"></b></div>
+    <div>HP: <span id="bossHP"></span> / <span id="bossMaxHP"></span></div>
+    <div class="bar"><div id="bossBar" class="bar-inner boss-bar-inner"></div></div>
+    <button onclick="attackBoss()">⚔️ Đánh Boss (-20 HP)</button>
+    <button onclick="spawnBoss()">🧬 Triệu hồi Boss khác</button>
+  </div>
+
+  <!-- LOG -->
+  <div class="card">
+    <h2>📖 Nhật ký</h2>
+    <div id="log" class="log"></div>
+    <button onclick="resetGame()" style="background:#dc2626;">🗑 Reset Game</button>
+  </div>
+
+</div>
+
+<script>
+// ================= DATA =================
+let data = {
+  playerName: "Hero",
+  title: "",
+  nameHistory: [],
+  gold: 0,               // 💰 TIỀN
+  activeBuffs: [],      // ⚡ POWERUP ĐANG HOẠT ĐỘNG
+  streak: {
+  current: 0,
+  lastDate: ""
+},
+  ai: {
+  questsDone: 0,
+  bossesKilled: 0,
+  rerolls: 0,
+  advice: "AI đang theo dõi bạn..."
+},
+
+  level:1, exp:0, nextExp:100,
+  skills:{study:0,health:0,discipline:0,social:0},
+  boss:null,
+  quest:null,
+  log:[]
+  
+};
+// ================= 50 BOSSES =================
+const BOSSES = [
+  "Thi Học Kỳ","Deadline Dự Án","Lười Biếng","TikTok Demon","YouTube Abyss",
+  "Mất Tập Trung","Thiếu Ngủ","Cám Dỗ Game","Overthinking","Stress",
+  "Procrastination King","Toán Cao Cấp","Vật Lý Khó","IELTS Speaking",
+  "Bài Tập Chồng Chất","Áp Lực Gia Đình","Mất Động Lực","Deadline 11:59PM",
+  "Quên Bài","Thi Trượt","Nghiện Điện Thoại","Thi Giữa Kỳ","Bài Thuyết Trình",
+  "Áp Lực Điểm Số","Thi Thử","Mất Kỷ Luật","Buồn Ngủ","Cám Dỗ Netflix",
+  "Task Quá Tải","Chán Học","Lười Tập Thể Dục","Thiếu Tự Tin","Bài Tập Nhóm",
+  "Overload Thông Tin","Thi Học Sinh Giỏi","Áp Lực Kỳ Vọng","Deadline Sát Núi",
+  "Thi Thực Hành","Mất Tập Trung Sáng","Mệt Mỏi","Thi Online",
+  "Thi Thử Lần 2","Bài Luận Dài","Thi Nói","Thi Viết","Thi Nghe",
+  "Thi Đọc","Áp Lực Thành Tích","Thi Cuối Kỳ"
+];
+const QUEST_TYPE_WEIGHTS = {
+  study: 6,
+  discipline: 3,
+  health: 2,
+  social: 1
+};
+// ================= 200+ QUEST GENERATOR =================
+const QUEST_TEMPLATES = [
+  {t:"study", text:"Học {subject} {min} phút"},
+  {t:"study", text:"Làm {num} bài tập {subject}"},
+  {t:"study", text:"Ôn lại {subject} trong {min} phút"},
+  {t:"health", text:"Tập thể dục {min} phút"},
+  {t:"health", text:"Đi bộ {num} phút"},
+  {t:"health", text:"Hít thở sâu {num} lần"},
+  {t:"discipline", text:"Dọn bàn học trong {min} phút"},
+  {t:"discipline", text:"Không dùng mạng xã hội {min} phút"},
+  {t:"discipline", text:"Hoàn thành việc khó nhất hôm nay"},
+  {t:"social", text:"Nói chuyện tích cực với 1 người"},
+  {t:"social", text:"Gửi tin nhắn động viên ai đó"},
+  {t:"social", text:"Chủ động hỏi bài / giúp đỡ người khác"}
+];
+
+const SUBJECTS = ["Toán","Lý","Hóa","Anh","Văn","Sinh","IELTS","Tin học","Sử","Địa"];
+
+// ================= CORE =================
+function save(){ localStorage.setItem("lifeRPG_AUTO", JSON.stringify(data)); }
+function load(){
+  const s = localStorage.getItem("lifeRPG_AUTO");
+  if(s) data = JSON.parse(s);
+  if(!data.ai){
+  data.ai = {
+    questsDone: 0,
+    bossesKilled: 0,
+    rerolls: 0,
+    advice: "AI đang theo dõi bạn..."
+  };
+}
+if(!data.activeBuffs) data.activeBuffs = [];
+if(!data.gold) data.gold = 0;
+  if(!data.boss) spawnBoss();
+  if(!data.quest) spawnQuest();
+  render();
+if(!data.streak){
+  data.streak = {
+    current: 0,
+    lastDate: ""
+  };
+}
+}
+
+function addLog(t){
+  const time = new Date().toLocaleTimeString();
+  data.log.unshift(`[${time}] ${t}`);
+  if(data.log.length>80) data.log.pop();
+  save(); render();
+}
+
+function gainExp(x){
+  data.exp += x;
+  while(data.exp >= data.nextExp){
+    data.exp -= data.nextExp;
+    data.level++;
+    data.nextExp = Math.floor(data.nextExp*1.25);
+    addLog(`🆙 LÊN LEVEL ${data.level}`);
+  }
+}
+
+// ================= BOSS =================
+function spawnBoss(){
+  const name = BOSSES[Math.floor(Math.random()*BOSSES.length)];
+
+  // Rarity
+  const r = Math.random();
+  let rarity = "Normal";
+  let rarityMult = 1;
+  if(r > 0.9){ rarity = "Legendary"; rarityMult = 2; }
+  else if(r > 0.7){ rarity = "Elite"; rarityMult = 1.5; }
+
+  // Skill
+  const skills = ["shield","rage","regen","dodge"];
+  const skill = skills[Math.floor(Math.random()*skills.length)];
+
+  const baseHp = Math.floor((100 + Math.random()*150 + data.level*10) * rarityMult);
+
+  data.boss = { 
+    name, 
+    hp: baseHp, 
+    maxHp: baseHp,
+    rarity,
+    skill,
+    enraged: false
+  };
+
+  addLog(`👹 Boss mới: [${rarity}] ${name} (${baseHp} HP, ${skill})`);
+  save(); 
+  render();
+}
+
+function attackBoss(){
+  if(!data.boss) return;
+
+  let dmg = 20;
+
+  // Buff Strong Attack
+  const atkBuff = data.activeBuffs.find(b => b.type==="strongAttack");
+  if(atkBuff){
+    dmg += 20;
+    atkBuff.uses--;
+    addLog("⚔️ Strong Attack kích hoạt!");
+  }
+
+  // Dodge
+  if(data.boss.skill === "dodge" && Math.random() < 0.25){
+    addLog("💨 Boss né đòn!");
+    save(); render();
+    return;
+  }
+
+  // Shield
+  if(data.boss.skill === "shield"){
+    dmg = Math.floor(dmg * 0.5);
+    addLog("🛡 Boss có Shield! Giảm sát thương.");
+  }
+
+  // Rage bonus damage
+  if(data.boss.skill === "rage"){
+    const missing = 1 - data.boss.hp / data.boss.maxHp;
+    dmg += Math.floor(missing * 20);
+  }
+
+  data.boss.hp -= dmg;
+  gainExp(10);
+  addLog(`⚔️ Gây ${dmg} dmg lên ${data.boss.name}`);
+
+  // Regen
+  if(data.boss.skill === "regen"){
+    const heal = 5 + Math.floor(Math.random()*6);
+    data.boss.hp = Math.min(data.boss.maxHp, data.boss.hp + heal);
+    addLog(`🩸 Boss hồi ${heal} HP`);
+  }
+
+  // Enrage
+  if(data.boss.hp / data.boss.maxHp < 0.3 && !data.boss.enraged){
+    data.boss.enraged = true;
+    addLog("😡 BOSS ENRAGED!");
+  }
+
+  // Boss chết
+  if(data.boss.hp <= 0){
+    addLog(`🏆 HẠ GỤC BOSS: ${data.boss.name}`);
+    data.ai.bossesKilled++;
+
+    const bossGold = Math.floor((30 + Math.random()*30) * 
+      (data.boss.rarity === "Legendary" ? 2 :
+       data.boss.rarity === "Elite" ? 1.5 : 1));
+
+    data.gold += bossGold;
+    addLog(`💰 Loot từ boss: +${bossGold} Gold`);
+
+    data.boss = null;
+    save();
+    spawnBoss();
+    return;
+  }
+
+  // Counter
+  if(Math.random() < 0.2){
+    const penalty = 5 + Math.floor(Math.random()*6);
+    data.exp = Math.max(0, data.exp - penalty);
+    addLog(`💥 Boss phản công! Mất ${penalty} EXP`);
+  }
+
+  save();
+  render();
+  updateAICoach();
+}
+
+// ================= QUEST =================
+function weightedRandomType(){
+  const pool = [];
+  for(const type in QUEST_TYPE_WEIGHTS){
+    for(let i=0;i<QUEST_TYPE_WEIGHTS[type];i++){
+      pool.push(type);
+    }
+  }
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+function spawnQuest(){
+  const chosenType = weightedRandomType();
+
+  const filtered = QUEST_TEMPLATES.filter(q => q.t === chosenType);
+  const tpl = filtered[Math.floor(Math.random()*filtered.length)];
+
+  let text = tpl.text
+    .replace("{subject}", SUBJECTS[Math.floor(Math.random()*SUBJECTS.length)])
+    .replace("{min}", 10 + Math.floor(Math.random()*50))
+    .replace("{num}", 3 + Math.floor(Math.random()*10));
+
+  const exp = 15 + Math.floor(Math.random()*35); // study thường EXP cao hơn
+
+  data.quest = { text, type:tpl.t, exp };
+  save(); render();
+}
+
+function completeQuest(){
+  if(!data.quest) return;
+  const streakResult = updateStreak();
+  const q = data.quest;
+  data.skills[q.type]++;
+  data.ai.questsDone++;
+  let finalExp = q.exp;
+  let finalGold = Math.floor(q.exp / 2);
+
+  const expBuff = data.activeBuffs.find(b => b.type==="doubleExp");
+  if(expBuff){
+    finalExp *= 2;
+    expBuff.uses--;
+    addLog("⚡ Double EXP kích hoạt!");
+  }
+
+  const goldBuff = data.activeBuffs.find(b => b.type==="bonusGold");
+  if(goldBuff){
+    finalGold = Math.floor(finalGold * 1.5);
+    goldBuff.uses--;
+    addLog("💰 Bonus Gold kích hoạt!");
+  }
+
+  data.gold += finalGold;
+  gainExp(finalExp);
+if(streakResult){
+  addLog(`🔥 Streak: ${streakResult.streak} ngày liên tiếp!`);
+  addLog(`🎁 Thưởng streak: +${streakResult.bonusExp} EXP, +${streakResult.bonusGold} Gold`);
+}
+  addLog(`💰 Nhận ${finalGold} Gold`);
+  addLog(`✅ Quest: ${q.text} (+${finalExp} EXP)`);
+
+  data.quest = null;
+  spawnQuest();
+  save(); render();
+  updateAICoach();
+}
+
+function rerollQuest(){
+  spawnQuest();
+  addLog("🔁 Đổi quest mới");
+  data.ai.rerolls++;
+  updateAICoach();
+}
+
+// ================= UI =================
+function resetGame(){
+  if(confirm("Reset toàn bộ dữ liệu?")){
+    localStorage.removeItem("lifeRPG_AUTO");
+    location.reload();
+  }
+}
+
+function render(){
+  goldLabel.textContent = data.gold;
+  playerNameLabel.textContent = data.playerName;
+  playerNameInput.value = data.playerName;
+  playerTitle.textContent = data.title || "None";
+  level.textContent = data.level;
+  exp.textContent = data.exp;
+  nextExp.textContent = data.nextExp;
+  expBar.style.width = (data.exp/data.nextExp*100)+"%";
+
+  skillStudy.textContent = data.skills.study;
+  skillHealth.textContent = data.skills.health;
+  skillDiscipline.textContent = data.skills.discipline;
+  skillSocial.textContent = data.skills.social;
+
+  if(data.quest){
+    questBox.innerHTML = `
+      <b>${data.quest.text}</b><br>
+      Loại: ${data.quest.type} | EXP: ${data.quest.exp}
+    `;
+  }
+
+  if(data.boss){
+    bossTitle.textContent = data.boss.name;
+    bossHP.textContent = Math.max(0,data.boss.hp);
+    bossMaxHP.textContent = data.boss.maxHp;
+    bossBar.style.width = (data.boss.hp/data.boss.maxHp*100)+"%";
+  }
+
+  log.innerHTML = data.log.map(l=>`<div>${l}</div>`).join("");
+  data.activeBuffs = data.activeBuffs.filter(b => b.uses > 0);
+
+if(buffList){
+  buffList.innerHTML = data.activeBuffs.length
+    ? data.activeBuffs.map(b=>`${b.type} (${b.uses})`).join("<br>")
+    : "Không có";
+}
+if(aiAdvice){
+  aiAdvice.textContent = data.ai.advice;
+}
+if(streakLabel){
+  streakLabel.textContent = data.streak.current;
+}
+}
+load();
+function changeName(){
+  const newName = playerNameInput.value.trim();
+  if(!newName) return alert("Nhập tên nhân vật!");
+
+  const oldName = data.playerName;
+  data.playerName = newName;
+
+  data.nameHistory.push({
+    time: new Date().toLocaleString(),
+    from: oldName,
+    to: newName
+  });
+
+  addLog(`🧬 Đổi tên: ${oldName} → ${newName}`);
+  save();
+  render();
+}
+const POWERUPS = {
+  doubleExp: { cost:50, uses:2, name:"Double EXP" },
+  strongAttack: { cost:75, uses:3, name:"Strong Attack" },
+  bonusGold: { cost:60, uses:3, name:"Bonus Gold" }
+};
+
+function buyPowerup(type){
+  const p = POWERUPS[type];
+  if(data.gold < p.cost){
+    return alert("Không đủ Gold!");
+  }
+
+  data.gold -= p.cost;
+  data.activeBuffs.push({
+    type,
+    uses: p.uses
+  });
+
+  addLog(`🛒 Mua power-up: ${p.name}`);
+  save(); render();
+}
+function updateAICoach(){
+  const ai = data.ai;
+
+  if(ai.rerolls > ai.questsDone){
+    ai.advice = "📛 Bạn đang đổi quest quá nhiều. Hãy hoàn thành ít nhất 1 quest.";
+  }
+  else if(ai.questsDone >= 3){
+    ai.advice = "🔥 Tốt lắm! Bạn đang làm rất tốt hôm nay.";
+  }
+  else{
+    ai.advice = "🙂 Cố gắng hoàn thành vài quest để tạo đà.";
+  }
+
+  save();
+}
+function updateStreak(){
+  const today = new Date().toDateString();
+  const last = data.streak.lastDate;
+
+  if(last === today){
+    return;
+  }
+
+  if(!last){
+    data.streak.current = 1;
+  } 
+  else {
+    const lastDate = new Date(last);
+    const diffDays = Math.floor((new Date() - lastDate) / (1000*60*60*24));
+
+    if(diffDays === 1){
+      data.streak.current++;
+    } else {
+      data.streak.current = 1;
+    }
+  }
+
+  data.streak.lastDate = today;
+
+  // Chỉ cập nhật data, KHÔNG log, KHÔNG render ở đây
+  const bonusExp = data.streak.current * 2;
+  const bonusGold = data.streak.current;
+
+  data.exp += bonusExp;
+  data.gold += bonusGold;
+
+  // Trả về info để completeQuest log sau
+  return {
+    streak: data.streak.current,
+    bonusExp,
+    bonusGold
+  };
+}
+</script>
+</body>
+</html>
